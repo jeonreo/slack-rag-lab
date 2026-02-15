@@ -51,24 +51,3 @@ dotnet run
 Batch Mode (Dry Run)
 dotnet run -- batch ingest --channel <CHANNEL_ID> --windowHours 24 --dryRun true
 
-⚠️ Environment Variables
-
-아래 값들은 실제 키를 직접 저장하지 않습니다.
-
-SLACK_BOT_TOKEN
-
-OPENAI_API_KEY
-
-DB_CONNECTION
-
-📚 What This Project Demonstrates
-
-Slack Event Subscription 구성
-
-Reverse Proxy 구성 경험
-
-Batch 작업 설계
-
-RAG 통제 구조 이해
-
-운영 관점에서 AI 기능 설계
