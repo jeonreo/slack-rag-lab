@@ -50,4 +50,3 @@ dotnet run
 
 Batch Mode (Dry Run)
 dotnet run -- batch ingest --channel <CHANNEL_ID> --windowHours 24 --dryRun true
-
