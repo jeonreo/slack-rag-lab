@@ -4,6 +4,9 @@ using SlackRag.Infrastructure.OpenAi;
 
 namespace SlackRag.Infrastructure.Rag;
 
+/// <summary>
+/// PostgreSQL pgvector 유사도 검색 구현체다.
+/// </summary>
 public sealed class PgKnowledgeCardSearch : IKnowledgeCardSearch
 {
     private readonly string _connStr;
@@ -19,6 +22,7 @@ public sealed class PgKnowledgeCardSearch : IKnowledgeCardSearch
         CancellationToken ct
     )
     {
+        // 질의 벡터를 SQL에서 사용할 pgvector literal로 변환한다.
         var qLiteral = OpenAiHelper.ToPgVectorLiteral(questionEmbedding);
 
         await using var conn = new NpgsqlConnection(_connStr);
@@ -35,6 +39,7 @@ public sealed class PgKnowledgeCardSearch : IKnowledgeCardSearch
         cmd.Parameters.AddWithValue("q", qLiteral);
         cmd.Parameters.AddWithValue("limit", limit);
 
+        // distance 오름차순 결과를 도메인 hit 모델로 매핑한다.
         var hits = new List<KnowledgeCardHit>();
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);

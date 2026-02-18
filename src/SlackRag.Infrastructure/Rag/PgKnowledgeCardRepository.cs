@@ -4,6 +4,9 @@ using SlackRag.Infrastructure.OpenAi;
 
 namespace SlackRag.Infrastructure.Rag;
 
+/// <summary>
+/// PostgreSQL( pgvector ) 기반 지식카드 저장소 구현체다.
+/// </summary>
 public sealed class PgKnowledgeCardRepository : IKnowledgeCardRepository
 {
     private readonly string _connStr;
@@ -15,6 +18,7 @@ public sealed class PgKnowledgeCardRepository : IKnowledgeCardRepository
 
     public async Task<IReadOnlyList<KnowledgeCardForIndexing>> GetCardsMissingEmbeddingAsync(CancellationToken ct)
     {
+        // 임베딩이 비어있는 카드만 재색인 대상으로 조회한다.
         await using var conn = new NpgsqlConnection(_connStr);
         await conn.OpenAsync(ct);
 
@@ -46,6 +50,7 @@ public sealed class PgKnowledgeCardRepository : IKnowledgeCardRepository
         CancellationToken ct
     )
     {
+        // pgvector 컬럼에 맞는 문자열 literal 형태로 변환한다.
         var vecLiteral = OpenAiHelper.ToPgVectorLiteral(embedding);
 
         await using var conn = new NpgsqlConnection(_connStr);
@@ -67,11 +72,11 @@ public sealed class PgKnowledgeCardRepository : IKnowledgeCardRepository
     }
 
     public async Task<int> InsertKnowledgeCardAsync(
-    string problem,
-    string solution,
-    string sourceUrl,
-    CancellationToken ct
-)
+        string problem,
+        string solution,
+        string sourceUrl,
+        CancellationToken ct
+    )
     {
         await using var conn = new NpgsqlConnection(_connStr);
         await conn.OpenAsync(ct);
@@ -90,6 +95,7 @@ public sealed class PgKnowledgeCardRepository : IKnowledgeCardRepository
 
     public async Task EnsureIndexesAsync(CancellationToken ct)
     {
+        // source_url 기준 중복 삽입 방지를 위한 unique index를 보장한다.
         await using var conn = new NpgsqlConnection(_connStr);
         await conn.OpenAsync(ct);
 

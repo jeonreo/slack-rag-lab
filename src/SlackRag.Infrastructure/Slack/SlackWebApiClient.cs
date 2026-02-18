@@ -4,6 +4,9 @@ using SlackRag.Domain.Slack;
 
 namespace SlackRag.Infrastructure.Slack;
 
+/// <summary>
+/// Slack Web API¸¦ È£ÃâÇØ ¸Ş½ÃÁö ÀÌ·Â/´Ü°Ç Á¶È¸¸¦ ¼öÇàÇÑ´Ù.
+/// </summary>
 public sealed class SlackWebApiClient : ISlackClient
 {
     private readonly HttpClient _http;
@@ -27,6 +30,7 @@ public sealed class SlackWebApiClient : ISlackClient
 
         while (true)
         {
+            // conversations.history¸¦ ÆäÀÌÁö³×ÀÌ¼Ç(cursor) ¹æ½ÄÀ¸·Î ¼øÈ¸ÇÑ´Ù.
             var url =
                 $"https://slack.com/api/conversations.history?channel={channelId}" +
                 $"&limit={pageSize}&oldest={oldestSeconds}" +
@@ -58,6 +62,7 @@ public sealed class SlackWebApiClient : ISlackClient
 
                     if (!TryParseSlackTs(ts, out var tsTime)) continue;
 
+                    // µµ¸ŞÀÎ ¸ğµ¨·Î Á¤±ÔÈ­ÇØ ´©ÀûÇÑ´Ù.
                     results.Add(new SlackMessage(ts, text, tsTime));
                 }
             }
@@ -77,10 +82,9 @@ public sealed class SlackWebApiClient : ISlackClient
         return results;
     }
 
-
     public async Task<SlackMessage?> GetMessageAsync(string channelId, string ts, CancellationToken ct)
     {
-        // conversations.repliesë¡œ íŠ¹ì • ts ë©”ì‹œì§€ë¥¼ ê°€ì ¸ì˜¤ëŠ” ê²Œ ê°€ì¥ ì•ˆì „í•¨
+        // conversations.replies¿¡¼­ ÁöÁ¤ ts¿¡ ÇØ´çÇÏ´Â ¸Ş½ÃÁö¸¦ ´Ü°Ç ÃßÃâÇÑ´Ù.
         var url = $"https://slack.com/api/conversations.replies?channel={channelId}&ts={Uri.EscapeDataString(ts)}&limit=1";
 
         using var resp = await _http.GetAsync(url, ct);
@@ -117,6 +121,7 @@ public sealed class SlackWebApiClient : ISlackClient
 
     private static bool TryParseSlackTs(string ts, out DateTimeOffset dto)
     {
+        // Slack ts(¿¹: 1700000000.123456)¿¡¼­ ÃÊ ´ÜÀ§¸¦ ÆÄ½ÌÇÑ´Ù.
         dto = default;
 
         var dot = ts.IndexOf('.');

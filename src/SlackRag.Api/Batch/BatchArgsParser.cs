@@ -1,7 +1,13 @@
 namespace SlackRag.Api.Batch;
 
+/// <summary>
+/// CLI 인자를 배치 실행 모델로 파싱한다.
+/// </summary>
 public static class BatchArgsParser
 {
+    /// <summary>
+    /// batch ingest용 인자를 읽어 유효성 검증 후 반환한다.
+    /// </summary>
     public static BatchArgs Parse(string[] args)
     {
         string? channel = null;

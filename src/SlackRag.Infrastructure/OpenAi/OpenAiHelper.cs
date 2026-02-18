@@ -6,10 +6,17 @@ using SlackRag.Infrastructure.Security;
 
 namespace SlackRag.Infrastructure.OpenAi;
 
+/// <summary>
+/// OpenAI HTTP 호출과 pgvector 포맷 변환을 담당하는 공용 헬퍼다.
+/// </summary>
 public static class OpenAiHelper
 {
+    /// <summary>
+    /// 입력 텍스트 임베딩을 생성한다.
+    /// </summary>
     public static async Task<float[]> CreateEmbeddingAsync(string input)
     {
+        // API 호출 전 PII를 마스킹한다.
         input = PiiRedactor.Redact(input);
 
         var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
@@ -42,6 +49,9 @@ public static class OpenAiHelper
         return result;
     }
 
+    /// <summary>
+    /// 질문+컨텍스트를 바탕으로 답변 텍스트를 생성한다.
+    /// </summary>
     public static async Task<string> GenerateAnswerAsync(string question, string context)
     {
         var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
@@ -81,9 +91,9 @@ public static class OpenAiHelper
         return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
     }
 
+    /// <summary>
+    /// float 벡터를 pgvector SQL literal 형식으로 변환한다.
+    /// </summary>
     public static string ToPgVectorLiteral(float[] vec)
         => "[" + string.Join(",", vec.Select(v => v.ToString(System.Globalization.CultureInfo.InvariantCulture))) + "]";
-
-
-    
 }

@@ -5,6 +5,9 @@ using SlackRag.Domain.Slack.Approval;
 
 namespace SlackRag.Application.Slack.Approval;
 
+/// <summary>
+/// ½ÂÀÎ ´ë»ó Slack ¸Ş½ÃÁö¸¦ ´Ü°Ç Á¶È¸ÇØ Ä«µå ÀúÀå¼Ò¿¡ ¹İ¿µÇÑ´Ù.
+/// </summary>
 public sealed class ApproveSlackMessageHandler
     : IRequestHandler<ApproveSlackMessageCommand, ApproveSlackMessageResult>
 {
@@ -21,6 +24,7 @@ public sealed class ApproveSlackMessageHandler
 
     public async Task<ApproveSlackMessageResult> Handle(ApproveSlackMessageCommand request, CancellationToken ct)
     {
+        // 1) ½ÂÀÎµÈ ts ±âÁØÀ¸·Î ¿øº» ¸Ş½ÃÁö¸¦ Á¶È¸ÇÑ´Ù.
         var msg = await _slack.GetMessageAsync(request.ChannelId, request.Ts, ct);
         if (msg is null)
             return new ApproveSlackMessageResult(false, "message_not_found");
@@ -29,13 +33,15 @@ public sealed class ApproveSlackMessageHandler
         if (string.IsNullOrWhiteSpace(text))
             return new ApproveSlackMessageResult(false, "empty_text");
 
+        // 2) Ä«µå ÀúÀå Àü ¸Ş½ÃÁö º»¹®À» ¸¶½ºÅ·ÇÑ´Ù.
         var problem = _pii.Redact(text);
         var solution = "TBD";
 
-        // permalinkë¡œ í‘œì¤€í™” ì¶”ì²œ
+        // Slack permalink Çü½ÄÀ¸·Î source URL Å°¸¦ »ı¼ºÇÑ´Ù.
         var tsKey = request.Ts.Replace(".", "");
         var sourceUrl = $"https://slack.com/archives/{request.ChannelId}/p{tsKey}";
 
+        // 3) source_url unique Á¦¾àÀ¸·Î Áßº¹ ÀúÀåÀ» ¹æÁöÇÑ´Ù.
         var affected = await _repo.InsertKnowledgeCardAsync(problem, solution, sourceUrl, ct);
 
         return affected == 1

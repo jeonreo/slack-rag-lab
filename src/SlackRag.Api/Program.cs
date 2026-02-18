@@ -17,7 +17,7 @@ using SlackRag.Application.Common.Behaviors;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// API 서버 설정
+// API 기본 구성(스웨거, 옵션 바인딩, MediatR 파이프라인)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -51,6 +51,7 @@ builder.Services.AddScoped<SlackRag.Domain.Rag.IAnswerGenerator, SlackRag.Infras
 
 builder.Services.AddHttpClient<ISlackClient, SlackWebApiClient>(client =>
 {
+    // Slack Bot Token은 반드시 환경 변수에서만 읽는다.
     var token = Environment.GetEnvironmentVariable("SLACK_BOT_TOKEN");
     if (string.IsNullOrWhiteSpace(token))
         throw new InvalidOperationException("Missing SLACK_BOT_TOKEN");
@@ -59,9 +60,9 @@ builder.Services.AddHttpClient<ISlackClient, SlackWebApiClient>(client =>
 });
 
 
-// 실행 모드 분기:
-// - 기본: API 서버 실행
-// - batch 인자: 배치 작업 실행 후 종료
+// 실행 모드 분기
+// - 기본 모드: API 서버 실행
+// - batch ingest: 히스토리 수집 작업만 실행 후 종료
 if (args.Length > 0 && args[0].Equals("batch", StringComparison.OrdinalIgnoreCase))
 {
     if (args.Length < 2 || !args[1].Equals("ingest", StringComparison.OrdinalIgnoreCase))
@@ -82,11 +83,11 @@ if (args.Length > 0 && args[0].Equals("batch", StringComparison.OrdinalIgnoreCas
 
 
     var result = await mediator.Send(new IngestSlackHistoryCommand(
-    ChannelId: parsed.Channel,
-    WindowHours: parsed.WindowHours,
-    PageSize: 200,
-    DryRun: parsed.DryRun
-));
+        ChannelId: parsed.Channel,
+        WindowHours: parsed.WindowHours,
+        PageSize: 200,
+        DryRun: parsed.DryRun
+    ));
 
     Console.WriteLine($"Batch done inserted={result.Inserted}");
     Environment.Exit(0);
@@ -102,8 +103,7 @@ app.UseSwaggerUI();
 app.UseHttpsRedirection();
 
 
-// 1) 질문 응답 API
-
+// 1) 질문 응답 API: 질문 -> RAG 처리 -> 답변/근거 hit 반환
 app.MapPost("/ask", async ([FromBody] AskRequest req, IMediator mediator, CancellationToken ct) =>
 {
     var result = await mediator.Send(new SlackRag.Application.Rag.AskQuery(req.Question), ct);
@@ -111,7 +111,7 @@ app.MapPost("/ask", async ([FromBody] AskRequest req, IMediator mediator, Cancel
 });
 
 
-// 2) 환경 변수 키 로드 확인용(디버깅)
+// 2) OpenAI 키 로드 상태 확인(디버깅 용도)
 app.MapGet("/checkkey", () =>
 {
     var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
@@ -119,7 +119,7 @@ app.MapGet("/checkkey", () =>
 })
 .WithName("CheckKey");
 
-// 3) 임베딩 재색인(관리용)
+// 3) 임베딩 재색인(관리 API)
 app.MapPost("/admin/reindex", async (IMediator mediator, CancellationToken ct) =>
 {
     var result = await mediator.Send(new ReindexKnowledgeCardsCommand(), ct);
@@ -128,7 +128,7 @@ app.MapPost("/admin/reindex", async (IMediator mediator, CancellationToken ct) =
 .WithName("Reindex");
 
 
-// 4) Slack Events 수신
+// 4) Slack Events 수신 엔드포인트
 var approvedReactions = new HashSet<string>
 {
     "blahblah_check",
@@ -139,9 +139,11 @@ var approvedReactions = new HashSet<string>
 
 app.MapPost("/slack/events", async (HttpRequest req, IMediator mediator, IConfiguration cfg, ILogger<Program> logger, CancellationToken ct) =>
 {
+    // Slack 서명 검증에 필요한 헤더 추출
     var timestamp = req.Headers["X-Slack-Request-Timestamp"].ToString();
     var signature = req.Headers["X-Slack-Signature"].ToString();
  
+    // 요청 본문 원본 바이트를 읽어 검증 및 JSON 파싱에 재사용
     using var ms = new MemoryStream();
     await req.Body.CopyToAsync(ms, ct);
     var rawBody = ms.ToArray();
@@ -161,6 +163,7 @@ app.MapPost("/slack/events", async (HttpRequest req, IMediator mediator, IConfig
 
     if (!ok) return Results.Unauthorized();
 
+    // 검증 완료 후 본문 JSON 파싱
     var body = Encoding.UTF8.GetString(rawBody);
 
     using var doc = JsonDocument.Parse(body);
@@ -181,6 +184,7 @@ app.MapPost("/slack/events", async (HttpRequest req, IMediator mediator, IConfig
     var reaction = ev.TryGetProperty("reaction", out var rEl) ? rEl.GetString() : null;
     if (string.IsNullOrWhiteSpace(reaction)) return Results.Ok();
 
+    // 승인 리액션 화이트리스트에 포함된 이벤트만 처리
     var approved = cfg.GetSection("SlackApproval:ApprovedReactions").Get<string[]>() ?? Array.Empty<string>();
     if (!approved.Contains(reaction)) return Results.Ok();
 
@@ -192,7 +196,7 @@ app.MapPost("/slack/events", async (HttpRequest req, IMediator mediator, IConfig
     var ts = item.GetProperty("ts").GetString();
     if (string.IsNullOrWhiteSpace(channel) || string.IsNullOrWhiteSpace(ts)) return Results.Ok();
 
-    // MediatR 호출. insert만 수행
+    // 승인 메시지를 지식카드로 반영한다(중복이면 저장소에서 무시)
     try
     {
         _ = await mediator.Send(new ApproveSlackMessageCommand(channel, ts, reaction), ct);    
@@ -207,6 +211,7 @@ app.MapPost("/slack/events", async (HttpRequest req, IMediator mediator, IConfig
 
 using (var scope = app.Services.CreateScope())
 {
+    // 부팅 시점에 필수 인덱스를 보장한다.
     var repo = scope.ServiceProvider.GetRequiredService<SlackRag.Domain.Rag.IKnowledgeCardRepository>();
     await repo.EnsureIndexesAsync(CancellationToken.None);
 }
