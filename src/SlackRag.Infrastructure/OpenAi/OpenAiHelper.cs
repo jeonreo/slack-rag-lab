@@ -1,8 +1,10 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using SlackRag.Infrastructure.Security;
 
-namespace SlackRagBot;
+
+namespace SlackRag.Infrastructure.OpenAi;
 
 public static class OpenAiHelper
 {

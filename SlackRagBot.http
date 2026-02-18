@@ -1,6 +1,0 @@
-@SlackRagBot_HostAddress = http://localhost:5206
-
-GET {{SlackRagBot_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

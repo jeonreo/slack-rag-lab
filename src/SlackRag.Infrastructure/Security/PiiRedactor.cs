@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 
-namespace SlackRagBot;
+namespace SlackRag.Infrastructure.Security;
+
 
 public static class PiiRedactor
 {

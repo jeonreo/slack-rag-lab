@@ -1,56 +1,108 @@
-# Slack RAG Lab
+# SlackRagBot
 
-AI 기능이 포함된 서비스 설계 역량 강화를 위한 실습 프로젝트입니다.
+Slack 메시지에서 승인된 내용을 Knowledge Card로 적재하고, RAG 검색으로 질문에 답하는 Web API
 
-이 프로젝트는 Slack 데이터를 활용한 RAG 기반 Q&A 시스템을 설계하고,
-Batch 기반 데이터 수집 구조를 구현하는 것을 목표로 합니다.
+## 구성 요약
+- Api: HTTP 라우팅, DI, Slack Events 수신, batch 모드 엔트리
+- Application: CQRS 유스케이스, MediatR Handler, PipelineBehavior
+- Domain: 포트와 모델
+- Infrastructure: Postgres Npgsql, Slack Web API, OpenAI 어댑터
 
----
+## 주요 기능
+- Ask: DB에 저장된 카드에서 벡터 검색 후 답변 생성
+- Reindex: embedding 없는 카드에 embedding 생성 후 업데이트
+- Batch ingest: 최근 N시간 메시지 수집 후 카드로 적재
+- Slack approval: 특정 리액션이 달리면 해당 메시지를 카드로 적재
+- Slack signature verification: Slack 서명 검증으로 요청 위조 방지
+- 중복 방지: source_url unique 인덱스 + ON CONFLICT
 
-## 🎯 Project Goal
+## 사전 준비
+- .NET SDK
+- Docker Desktop
+- Slack App
+  - Bot Token
+  - Signing Secret
+  - Event Subscriptions 설정
 
-- RAG 구조 이해
-- pgvector 기반 유사도 검색 구현
-- Slack 이벤트 및 Web API 연동
-- Batch 기반 데이터 수집 설계
-- API 모드와 Batch 모드 분리 실행
+## 환경변수
+필수
+- SLACK_BOT_TOKEN
+- SLACK_SIGNING_SECRET
+- ConnectionStrings__RagDb
 
----
+예시
+- ConnectionStrings__RagDb
+  - Host=localhost;Port=5432;Database=ragdb;Username=rag;Password=ragpw
 
-## 🏗 Architecture Overview
+## 로컬 실행
+### 1) DB 실행
+docker compose를 사용하는 경우
+- docker compose up -d
 
-### API Mode
-Slack → nginx → .NET API  
-→ Embedding 생성 → Top-K 검색 → 답변 생성
+DB 접속정보 예시
+- POSTGRES_USER=rag
+- POSTGRES_PASSWORD=ragpw
+- POSTGRES_DB=ragdb
 
-### Batch Mode
-ECS / Docker RunTask  
-→ Slack Web API 조회  
-→ 메시지 수집  
-→ Knowledge Card 저장
+### 2) API 실행
+PowerShell 예시
 
----
+- $env:SLACK_BOT_TOKEN="xoxb-..."
+- $env:SLACK_SIGNING_SECRET="..."
+- $env:ConnectionStrings__RagDb="Host=localhost;Port=5432;Database=ragdb;Username=rag;Password=ragpw"
+- dotnet run --project src/SlackRag.Api
 
-## 🔑 Core Concepts
+Swagger
+- /swagger
 
-- Top-K는 후보 선택
-- threshold는 답변 허용 기준
-- 실시간 이벤트는 신호
-- 데이터 생성은 Batch 기반이 안전
-- API와 Batch는 동일 이미지에서 분리 실행
+## Batch 실행
+최근 N시간 메시지 ingest
 
----
+PowerShell 예시
+- dotnet run --no-launch-profile --project src/SlackRag.Api -- batch ingest --channel C0HFT4M0D --windowHours 6 --dryRun true
+- dotnet run --no-launch-profile --project src/SlackRag.Api -- batch ingest --channel C0HFT4M0D --windowHours 6 --dryRun false
 
-## 🚀 Run Locally
+중복 방지 검증 예시
+- dotnet run --no-launch-profile --project src/SlackRag.Api -- batch ingest --channel C0HFT4M0D --windowHours 1 --dryRun false
+- dotnet run --no-launch-profile --project src/SlackRag.Api -- batch ingest --channel C0HFT4M0D --windowHours 1 --dryRun false
 
-### API Mode
+기대 결과
+- 첫 번째 inserted가 0 이상
+- 두 번째 inserted는 0
 
-```bash
-dotnet run
+## API 엔드포인트
+- POST /ask
+- POST /admin/reindex
+- POST /slack/events
+- GET /checkkey
 
-Batch Mode (Dry Run)
-dotnet run -- batch ingest --channel <CHANNEL_ID> --windowHours 24 --dryRun true
+## Slack Events 설정
+1. Event Subscriptions 활성화
+2. Request URL을 /slack/events 로 설정
+3. URL verification 통과 확인
+4. 승인 리액션 allowlist
+   - appsettings.json SlackApproval:ApprovedReactions
+5. 채널에 봇 초대
 
+## 테스트
+- dotnet test SlackRag.sln
 
-#ETC
-Copy appsettings.example.json to appsettings.json and fill in real values.
+## 트러블슈팅
+- Slack API missing_scope
+  - 채널 타입에 맞는 scope 추가 후 reinstall
+- Slack API channel_not_found
+  - 채널 ID 확인
+  - 봇이 채널에 초대되어 있는지 확인
+- Postgres connection refused
+  - docker compose up -d
+  - 포트 매핑 확인
+- ON CONFLICT 오류 42P10
+  - source_url unique 인덱스 생성 경로가 batch에서도 실행되는지 확인
+
+## 보안
+- /slack/events는 Slack signature verification 적용
+- 운영에서는 SLACK_SIGNING_SECRET을 환경변수로 관리
+
+## 운영 메모
+- 승인 이벤트는 카드 insert만 수행
+- embedding 생성은 /admin/reindex로 별도 수행
